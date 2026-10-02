@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, CalendarDays, Check, ChevronRight, Clock3, Download, LayoutDashboard, LogOut, MapPin, Plus, Search, ShieldCheck, TicketCheck, Trash2, Users, X } from 'lucide-react'
 import { handleDemoFallback } from './demoAuth'
+import { apiUrl } from './api'
 import './App.css'
 
 const initialExams = [
@@ -25,29 +26,34 @@ function AuthScreen({ onLogin }) {
   const [mode, setMode] = useState('login')
   const [role, setRole] = useState('student')
   const [error, setError] = useState('')
+  const allowDemoFallback = import.meta.env.DEV || import.meta.env.VITE_DEMO_MODE === 'true'
   const submit = async (event) => {
     event.preventDefault()
     const data = Object.fromEntries(new FormData(event.currentTarget))
     try {
       const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login'
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, role }) })
+      const response = await fetch(apiUrl(endpoint), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, role }) })
       if (response.ok) {
         const result = await response.json()
         onLogin(result.user, result.token)
         return
       }
-      if ([401, 404, 502, 503, 504].includes(response.status)) {
+      if ([404, 502, 503, 504].includes(response.status)) {
         throw new Error('demo-fallback')
       }
       const result = await response.json()
       setError(result.message || 'Could not sign in. Check your details.')
       return
     } catch (error) {
-      if (error instanceof Error && error.message === 'demo-fallback') {
+      if (allowDemoFallback && error instanceof Error && error.message === 'demo-fallback') {
         handleDemoFallback({ mode, role, data, setError, onLogin })
         return
       }
-      handleDemoFallback({ mode, role, data, setError, onLogin })
+      if (allowDemoFallback) {
+        handleDemoFallback({ mode, role, data, setError, onLogin })
+        return
+      }
+      setError('The authentication service is unavailable. Please try again later.')
     }
   }
   return <main className="auth-layout">
@@ -109,7 +115,7 @@ function App() {
   const saveExams = (next) => { setExams(next); localStorage.setItem('exam-list', JSON.stringify(next)) }
   useEffect(() => {
     if (!token) return
-    fetch('/api/exams', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(apiUrl('/api/exams'), { headers: { Authorization: `Bearer ${token}` } })
       .then((response) => response.ok ? response.json() : null)
       .then((records) => { if (records) { setExams(records); localStorage.setItem('exam-list', JSON.stringify(records)) } })
       .catch(() => {})
@@ -119,7 +125,7 @@ function App() {
     const exam = { ...form, subject: form.subject.trim(), code: form.code.trim().toUpperCase(), hall: form.hall.trim() }
     if (token) {
       try {
-        const response = await fetch('/api/exams', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(exam) })
+        const response = await fetch(apiUrl('/api/exams'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(exam) })
         if (response.ok) { const created = await response.json(); saveExams([...exams, created]); setForm(initialForm); setNotice('Exam added to the published timetable.'); return }
         const body = await response.json(); setNotice(body.message || 'Unable to publish exam.'); return
       } catch { setNotice('API unavailable. The exam was saved in this browser only.') }
@@ -128,7 +134,7 @@ function App() {
   }
   const deleteExam = async (id) => {
     if (token) {
-      try { await fetch(`/api/exams/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }) } catch { /* Keep local admin controls available in demo mode. */ }
+      try { await fetch(apiUrl(`/api/exams/${id}`), { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }) } catch { /* Keep local admin controls available in demo mode. */ }
     }
     saveExams(exams.filter((exam) => exam._id !== id)); setNotice('Exam removed from the timetable.')
   }
@@ -136,7 +142,7 @@ function App() {
     const exam = exams.find((item) => item._id === id)
     if (token) {
       try {
-        const response = await fetch(`/api/exams/${id}/cancel`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+        const response = await fetch(apiUrl(`/api/exams/${id}/cancel`), { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
         if (!response.ok) { const body = await response.json(); setNotice(body.message || 'Unable to cancel exam.'); return }
       } catch { setNotice('API unavailable. The change was saved in this browser only.') }
     }
