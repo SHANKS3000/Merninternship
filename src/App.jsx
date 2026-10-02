@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bell, CalendarDays, Check, ChevronRight, Clock3, Download, LayoutDashboard, LogOut, MapPin, Plus, Search, ShieldCheck, TicketCheck, Trash2, Users, X } from 'lucide-react'
+import { handleDemoFallback } from './demoAuth'
 import './App.css'
 
 const initialExams = [
@@ -35,25 +36,19 @@ function AuthScreen({ onLogin }) {
         onLogin(result.user, result.token)
         return
       }
-      if (response.status !== 404 && response.status !== 503) {
-        const result = await response.json()
-        setError(result.message || 'Could not sign in. Check your details.')
+      if ([401, 404, 502, 503, 504].includes(response.status)) {
+        throw new Error('demo-fallback')
+      }
+      const result = await response.json()
+      setError(result.message || 'Could not sign in. Check your details.')
+      return
+    } catch (error) {
+      if (error instanceof Error && error.message === 'demo-fallback') {
+        handleDemoFallback({ mode, role, data, setError, onLogin })
         return
       }
-    } catch { /* Run the local demo when the API is not running. */ }
-    if (mode === 'register' && role === 'admin') {
-      setError('Administrator registration requires a configured API and valid invite code.')
-    } else if (mode === 'register' && role === 'student') {
-      const student = { name: data.name, email: data.email, year: data.year, branch: data.branch, rollNumber: data.rollNumber || 'CS23-084' }
-      localStorage.setItem('exam-demo-user', JSON.stringify(student))
-      onLogin(student, null)
-    } else if (role === 'admin' && data.email.toLowerCase().includes('admin')) {
-      onLogin({ name: 'Campus Administrator', email: data.email }, null)
-    } else if (role === 'student') {
-      const saved = localStorage.getItem('exam-demo-user')
-      if (saved && JSON.parse(saved).email === data.email) onLogin(JSON.parse(saved), null)
-      else onLogin(demoUser, null)
-    } else setError('For the demo, use an email containing “admin”.')
+      handleDemoFallback({ mode, role, data, setError, onLogin })
+    }
   }
   return <main className="auth-layout">
     <section className="auth-aside">

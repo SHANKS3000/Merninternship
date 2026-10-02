@@ -9,7 +9,31 @@ import { requireDatabase } from './middleware/database.js'
 const app = express()
 const port = Number(process.env.PORT) || 5000
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }))
+const configuredOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+
+const isLocalDevOrigin = (origin) => {
+  try {
+    const { hostname, port } = new URL(origin)
+    const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
+    return isLocalHost && (!port || Number.parseInt(port, 10) >= 3000)
+  } catch {
+    return false
+  }
+}
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || configuredOrigins.includes(origin) || isLocalDevOrigin(origin)) {
+      callback(null, true)
+      return
+    }
+
+    callback(new Error(`Origin ${origin} is not allowed by CORS`))
+  },
+}))
 app.use(express.json({ limit: '16kb' }))
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected' }))
 app.use('/api/auth', requireDatabase, authRoutes)
